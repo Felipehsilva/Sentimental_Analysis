@@ -1,0 +1,235 @@
+#----------------------------Project1--------------------------------------------
+
+#---------------------------------------------------------------------------------------------------------------
+#
+#                                       STEP 1
+#
+#---------------------------------------------------------------------------------------------------------------
+#twitter handling package
+install.packages("twitteR")
+
+install.packages("httr")
+install.packages("knitr")
+install.packages("rmarkdown")
+install.packages("ROAuth")
+install.packages("base64inc")
+library(RCurl)
+library(twitteR)
+library(httr)
+library(knitr)
+library(rmarkdown)
+
+#Twitter authentication method. These keys are obtained through a twitter developer account
+key <- "1ycMW2rSOayAOHwf54SCvtrWc"
+secret <- "6lY5wmMiqaHWK9RrBDYrqbOGkLbBWxUiZkC2XepmWkgcHbCQOV"
+token <- "3331282798-Krlmm6Hdl111ZpR7JfQuRjzKRLqHci8YpAzEfM8"
+tokensecret <- "anmWPG9UJyxaXJ1PgZrCtvjWslpvWS5clREmoEOEak0sS"
+#---------------------------------------------------------------------------------------------------------------
+#
+#                                       STEP 2
+#
+#---------------------------------------------------------------------------------------------------------------
+# Authentication. Answer 1 (Yes) to use direct connection. THe objective is testing the connection with Twitter
+setup_twitter_oauth(key, secret, token, tokensecret)
+userTimeline("felipehs93")
+#word that will basis our analysis
+tweetdata = searchTwitter("#BigData", n = 100)
+length(tweetdata)
+tweetdata
+#---------------------------------------------------------------------------------------------------------------
+#
+#                                       STEP 3
+#
+#---------------------------------------------------------------------------------------------------------------
+#the tm package, for text mining. I will convert the collected tweets into an object
+#type Corpus, which stores data and metadata and then we will do some cleaning process, such as
+#remove punctuation, convert data to lowercase letters and remove stopwords (common words in the
+#English language in this case).
+#stop words: In computing, stop words are words which are filtered out before or after processing of
+#natural language data (text).[1] Though "stop words" usually refers to the most common words in a language,
+#there is no single universal list of stop words used by all natural language processing tools, and indeed
+#not all tools even use such a list. Some tools specifically avoid removing these stop words to support phrase search.
+
+# installing the package Text Mining.
+install.packages("tm")
+install.packages("SnowballC")
+library(SnowballC)
+library(tm)
+
+
+# Treatment (cleaning, organization and transformation) of the collected data
+# x$ because  the type is a List.
+tweetlist <- sapply(tweetdata, function(x) x$getText())
+#?gettext
+#tweetlist
+#Creating a Corpus (large set of text used to do statistical analysis) and applying some transformations
+tweetcorpus <- Corpus(VectorSource(tweetlist))
+tweetcorpus <- tm_map(tweetcorpus, removePunctuation)
+tweetcorpus <- tm_map(tweetcorpus, content_transformer(tolower))
+tweetcorpus <- tm_map(tweetcorpus, function(x)removeWords(x, stopwords()))
+# Converting the Corpus object to plain text (unfortunately this code snippet make an error ahead )
+#tweetcorpus <- tm_map(tweetcorpus, PlainTextDocument)
+
+#---------------------------------------------------------------------------------------------------------------
+#
+#                                       STEP 4
+#
+#---------------------------------------------------------------------------------------------------------------
+
+# Installing the wordcloud package
+install.packages("RColorBrewer")
+install.packages("wordcloud")
+library(RColorBrewer)
+library(wordcloud)
+# Generating a word cloud
+pal2 <- brewer.pal(8,"Dark2")
+wordcloud(tweetcorpus,
+          min.freq = 4,
+          scale = c(5,1),
+          random.color = F,
+          max.word = 60,
+          random.order = F,
+          colors = pal2)
+
+
+# Converting the text object to the matrix format
+tweettdm <- TermDocumentMatrix(tweetcorpus)
+tweettdm
+
+# Finding the words that appear most often
+findFreqTerms(tweettdm, lowfreq = 11)
+
+# Seeking associations
+findAssocs(tweettdm, 'datascience', 0.60)
+
+# Removing sparse terms (not used often)
+tweet2tdm <-removeSparseTerms(tweettdm, sparse = 0.9)
+
+# Scaling the data
+tweet2tdmscale <- scale(tweet2tdm)
+
+# Distance Matrix
+tweetdist <- dist(tweet2tdmscale, method = "euclidean")
+# Preparing the dendrogram
+tweetfit <- hclust(tweetdist)
+# Creating the dendrogram (checking how words are grouped together)
+plot(tweetfit)
+# checking groups
+cutree(tweetfit, k = 6)
+
+# Viewing the word groups in the dendrogram
+rect.hclust(tweetfit, k = 6, border = "red")
+
+#---------------------------------------------------------------------------------------------------------------
+#
+#                                       STEP 5
+#
+#---------------------------------------------------------------------------------------------------------------
+
+# Creating a function to evaluate the feeling
+ install.packages("stringr")
+#Used to create small subsets of a large set and then combine the results
+ install.packages("plyr")
+library(stringr)
+library(plyr)
+
+felling.score = function(sentences, pos.words, neg.words, .progress = 'none')
+{
+  # Creating an score array with lapply
+  scores = laply(sentences,
+                 function(sentence, pos.words, neg.words)
+                 {
+                   #replace Punctuation character: ! " # $ % & ' ( ) * + , - . / : ; < = > ? @ [ \ ] ^ _ ` {
+                   #| } ~ to ""
+                   sentence = gsub("[[:punct:]]", "", sentence)
+                   # replace Control characters to ""
+                   sentence = gsub("[[:cntrl:]]", "", sentence)
+                   #replace one or a sequence of digits to ''
+                   sentence =gsub('\\d+', '', sentence)
+                   #try to lower function
+                   tryTolower = function(x)
+                   {
+                     y = NA
+                     try_error = tryCatch(tolower(x), error=function(e) e)
+                     if (!inherits(try_error, "error"))
+                       y = tolower(x)
+                     return(y)
+                   }
+                   #apllying the sentence to lower function
+                   sentence = sapply(sentence, tryTolower)
+                   #split string when encounter one or more spaces
+                   word.list = str_split(sentence, "\\s+")
+                   #changing the words.list to a vector
+                   words = unlist(word.list)
+                   #returns a vector of the positions of (first) matches of its first argument in its second. If does not match will assign a NA value
+                   pos.matches = match(words, pos.words)
+                   #print(pos.matches)
+                   neg.matches = match(words, neg.words)
+                   #print(neg.matches)
+                   #is.na check the NA value and return True if exists and denying the result
+                   pos.matches = !is.na(pos.matches)
+                   #print(pos.matches)
+                   neg.matches = !is.na(neg.matches)
+                   #print(neg.matches)
+                   #sum of true and false value
+                   score = sum(pos.matches) - sum(neg.matches)
+                   return(score)
+                 }, pos.words, neg.words, .progress = .progress )
+  scores.df = data.frame(text = sentences, score = scores)
+  return(scores.df)
+}
+# Mapping positive and negative words
+pos = readLines("palavras_positivas.txt")
+neg = readLines("palavras_negativas.txt")
+# Creating test data
+teste = c("Big Data is the future", "awesome experience",
+          "analytics could not be bad", "learn to use big data")
+# Testing the function on our dummy data set
+testefelling = felling.score(teste, pos, neg)
+testefelling
+class(testefelling)
+
+# Checking the score
+# 0 - expression has no word in our positive and negative word lists or
+# found a negative and a positive word in the same sentence
+# 1 - expression has a word with a positive connotation
+# -1 - expression has a negative connotation word
+testefelling$score
+
+
+#---------------------------------------------------------------------------------------------------------------
+#
+#                                       STEP 6
+#
+#---------------------------------------------------------------------------------------------------------------
+
+# Tweets per country
+uktweets = searchTwitter("uk", n = 500, lang = "en")
+uktweets
+usatweets = searchTwitter("usa", n = 500, lang = "en")
+# getting text
+uktxt = sapply(uktweets, function(x) x$getText())
+usatxt = sapply(usatweets, function(x) x$getText())
+# country tweets vector
+cntTweet = c(length(uktxt), length(usatxt))
+# gathering the texts
+country = c(uktxt, usatxt)
+# Applying function to calculate the felling score
+scores = felling.score(country, pos, neg, .progress = 'text')
+# Calculating the score by country
+scores$country = factor(rep(c("uk", "usa"), cntTweet))
+scores$very.pos = as.numeric(scores$score >= 1)
+scores$very.neg = as.numeric(scores$score <= -1)
+# Calculating the total
+numpos = sum(scores$very.pos)
+numneg = sum(scores$very.neg)
+# global Score
+global_score = round( 100 * numpos / (numpos + numneg) )
+head(scores)
+boxplot(score ~ country, data = scores)
+# Generating a histogram with the lattice
+# install.packages("lattice")
+library("lattice")
+histogram(data = scores, ~score|country, main = "Felling analisys", xlab = "", sub = "Score")
+
+
